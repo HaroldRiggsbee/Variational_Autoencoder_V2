@@ -1,0 +1,8 @@
+samples/
+spectrograms/
+savedaudio/
+savedmodels/
+*.pth
+*.wav
+*.npy
+.DS_Store
