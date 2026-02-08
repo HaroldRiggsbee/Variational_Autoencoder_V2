@@ -11,6 +11,7 @@ import numpy as np
 import pandas as pd
 #%matplotlib inline
 
+import soundfile as sf
 import librosa
 import librosa.display
 import os
@@ -30,7 +31,11 @@ class PreprocessingPipeline:
     self.num_expected_sample = int(self.sample_rate * self.duration)
 
   def _file_load(self, file_path):
-    signal = librosa.load(file_path, sr = self.sample_rate, duration=self.duration, mono= self.mono)[0]
+    signal, sr = librosa.load(file_path, sr = None, mono= self.mono)
+    return signal, sr
+
+  def _SR_conversion(self, signal, sr):
+    signal = librosa.resample(signal, orig_sr=sr, target_sr=self.sample_rate)
     return signal
 
   def _apply_padding(self, signal):
@@ -80,23 +85,23 @@ class PreprocessingPipeline:
           file_path = os.path.join(root, file)
           self._process_file(file_path)
         else: continue
-        # if file_count < 5:
-        #   signal = self.file_load(file_path)
-        #   plt.figure(figsize=(20,7))
-        #   librosa.display.waveshow(signal, sr = self.sample_rate)
-        #   plt.title(f"Waveform of {file}")
-        #   plt.show()
-        #   file_count += 1
-        #print(f"Processed file {file_path}")
-    #self.saver.save_min_max_values(self.min_max_values)
     print("Files complete")
 
   def _process_file(self, file_path):
-    signal = self._file_load(file_path)
+    """Main function for file processing"""
+    signal, sr = self._file_load(file_path)
+    if sr != 48000:
+      print(f"Converting {sr}to higher sample rate")
+      signal = self._SR_conversion(signal, sr)
     print(f"Shape before padding {signal.shape}")
-    if len(signal) < self.num_expected_sample:
-      signal = self._apply_padding(signal)
-    else: print("No padding needed")
+    if len(signal) > self.num_expected_sample:
+        # Truncate if too long
+        signal = signal[:self.num_expected_sample]
+        print(f"Truncated to {self.num_expected_sample} samples")
+    elif len(signal) < self.num_expected_sample:
+        # Pad if too short
+        signal = self._apply_padding(signal)
+    else: print("No padding/truncation needed")
     pitch_count = 0
     # while pitch_count < 2:
     #   pitched_audio = self.augment_audio(signal)
@@ -104,3 +109,4 @@ class PreprocessingPipeline:
     feature = self._extract(harmonic_signal)
     self._save_feature(feature, file_path, pitch_count)
     #   pitch_count += 1
+

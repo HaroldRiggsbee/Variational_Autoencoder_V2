@@ -1,13 +1,3 @@
-"""
-Evaluation metrics module for audio spectrogram analysis.
-
-This module provides functionality for:
-- Selecting random images from a dataset
-- Plotting original vs reconstructed spectrograms
-- Visualizing latent space representations
-- Converting spectrograms back to audio signals
-"""
-
 import numpy as np
 import torch
 import matplotlib.pyplot as plt
@@ -15,18 +5,14 @@ import librosa
 import librosa.display
 from IPython.display import display, Audio
 
+import sys
+import os
+import soundfile as sf  # Add this import at the top of the file
+
 
 def select_images(loader, num_images=4, min_max_values=None):
     """
     Randomly select images from the dataset.
-
-    Args:
-        loader: PyTorch DataLoader containing the dataset
-        num_images: Number of images to select (default: 4)
-        min_max_values: Optional array of min/max normalization values for each sample
-
-    Returns:
-        tuple: (sample_images tensor, list of min/max values)
     """
     image_index = np.random.choice(
         len(loader.dataset),
@@ -37,25 +23,21 @@ def select_images(loader, num_images=4, min_max_values=None):
     sample_min_max = []
 
     for index in image_index:
-        sample_images.append(torch.from_numpy(loader.dataset[index]))
+        #sample_images.append(torch.from_numpy(loader.dataset[index]))
+        sample_images.append(loader.dataset[index].cpu().numpy())
+
         if min_max_values is not None:
             sample_min_max.append(min_max_values[index])
             print(f"Min/Max values for sample {index}: {sample_min_max[-1]}")
-
+    sample_images = [torch.from_numpy(img) if isinstance(img, np.ndarray) else img for img in sample_images]
     sample_images = torch.stack(sample_images)
+    # sample_images = torch.stack(sample_images)
     return sample_images, sample_min_max
 
 
 def plot_reconstructed_images(images, reconstructed_images, min_max_values, sample_rate, hop_length, scaler=None):
     """
     Plot original and reconstructed spectrograms side by side.
-
-    Args:
-        images: Original spectrogram images
-        reconstructed_images: Reconstructed spectrogram images
-        scaler: Optional scaler object for denormalization
-        sample_rate: Audio sample rate (default: 22050)
-        hop_length: STFT hop length (default: 512)
     """
     num_images = len(images)
     fig, axes = plt.subplots(
@@ -109,10 +91,6 @@ def plot_reconstructed_images(images, reconstructed_images, min_max_values, samp
 def plot_latent_space(latent_representation, sample_labels=None):
     """
     Visualize the 2D latent space representation.
-
-    Args:
-        latent_representation: 2D array of latent space coordinates
-        sample_labels: Optional labels for coloring points
     """
     plt.figure(figsize=(10, 10))
 
@@ -139,20 +117,34 @@ def plot_latent_space(latent_representation, sample_labels=None):
     plt.title('Latent Space Visualization')
     plt.show()
 
-
-def convert_spectrograms_to_audio(reconstructed_images, scaler, sample_rate, output_dir):
+def convert_spectrograms_to_audio(reconstructed_images, scaler, sample_rate, hop_length, output_dir):
     """Process reconstructed images into audio wave files"""
+
+    # Ensure the output directory exists so it doesn't crash
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+
     if reconstructed_images is not None:
         print("Converting reconstructed spectrograms to audio...")
+        prefix = "reconstructed"  # Define the filename prefix
+
         for idx, spectrogram in enumerate(reconstructed_images):
+            # 1. Prepare the spectrogram
             log_spectrogram = spectrogram[0, :, :].cpu().detach().numpy().squeeze()
             denormalized_spectrogram = scaler.inverse_transform(log_spectrogram)
+
             print(f"Reconstructed {idx + 1} - Max: {denormalized_spectrogram.max():.2f}, "
                   f"Min: {denormalized_spectrogram.min():.2f}")
+
+            # 2. Convert to Audio Signal
             spec = librosa.db_to_amplitude(denormalized_spectrogram)
             signal = librosa.istft(spec, hop_length=hop_length)
-            #code to save to hard drive
-            file_path = os.path.join(output_dir, f"{prefix}_{i}.wav")
-            sf.write(file_path, signal, sr)
-            print(f"Saved: {file_path}")
 
+            # 3. Save to Hard Drive (Using the correct variables)
+            # We use 'idx' here because that matches the loop counter
+            file_name = f"{prefix}_{idx + 1}.wav"
+            file_path = os.path.join(output_dir, file_name)
+
+            # Use 'sample_rate' (the argument name) instead of 'sr'
+            sf.write(file_path, signal, sample_rate)
+            print(f"Saved: {file_path}")

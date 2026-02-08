@@ -72,7 +72,6 @@ class ConvolutionalNetwork(nn.Module):
         nn.Linear(self.latent_space_dim, self.encoder_output_size_flattened),
         nn.LeakyReLU(),
         nn.Unflatten(1, self.shape_before_bottleneck[1:]),
-        nn.Dropout(0.05),
         nn.ConvTranspose2d(self.conv_filters[4], self.conv_filters[4], kernel_size=self.conv_kernels[4], stride=self.conv_strides[4], padding=self.padding[0], output_padding=self.output_padding[0]),
         nn.LeakyReLU(),
         nn.BatchNorm2d(num_features=self.conv_filters[4]),
@@ -86,7 +85,8 @@ class ConvolutionalNetwork(nn.Module):
         nn.LeakyReLU(),
         nn.BatchNorm2d(num_features=self.conv_filters[1]),
         nn.ConvTranspose2d(self.conv_filters[1], 1, kernel_size=(self.conv_kernels[0]), stride=self.conv_strides[0], padding=self.padding[4], output_padding=self.output_padding[4]),
-        nn.Tanh()  # Output in range [-1, 1]
+        # nn.Tanh()  # Output in range [-1, 1]
+        nn.Sigmoid()
     )
     return decoder
 
@@ -104,9 +104,11 @@ class ConvolutionalNetwork(nn.Module):
     return self.mu_tensor + torch.exp(0.5 * self.log_variance_tensor) * epsilon
 
   #calculate KL Loss
+  @property
   def KL_divergence(self):
     kl_loss = -0.5 * torch.sum(1 + self.log_variance_tensor - self.mu_tensor.pow(2) - torch.exp(self.log_variance_tensor), dim=1)
-    return kl_loss.to(self.mu_tensor.device)
+    Kl_safeguard = torch.clamp(kl_loss, min=0.5)  # Preventing possible KL posterior collapse
+    return Kl_safeguard.to(self.mu_tensor.device)
 
   #main forward method
   def forward(self, input):
